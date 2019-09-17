@@ -6,6 +6,7 @@ const Bluebird        = require('bluebird');
 const createBoomError = require('create-boom-error');
 const Hapi            = require('hapi');
 const Redis           = require('redis');
+const Sinon           = require('sinon');
 Bluebird.promisifyAll(Redis.RedisClient.prototype);
 Bluebird.promisifyAll(Redis.Multi.prototype);
 
@@ -21,6 +22,8 @@ describe('plugin', () => {
   const shortLimitRate = { limit: 1, window: 60 };
   const shortWindowRate = { limit: 10, window: 1 };
   const defaultRate = { limit: 10, window: 60 };
+  let returnedRedisError;
+  let time;
 
   const server = new Hapi.Server();
 
@@ -34,8 +37,14 @@ describe('plugin', () => {
       options: {
         defaultRate: () => defaultRate,
         redisClient,
-        rateLimitKey: (request) => request.auth.credentials.api_key,
-        overLimitError: (rate) => new RateLimitError(rate)
+        key: (request) => request.auth.credentials.api_key,
+        overLimitError: (rate) => new RateLimitError(rate),
+        onRedisError: (err) => {
+          returnedRedisError = err;
+        },
+        timer: (ms) => {
+          time = ms;
+        }
       }
     }
   ], () => {});
@@ -91,7 +100,7 @@ describe('plugin', () => {
       plugins: {
         rateLimit: {
           enabled: true,
-          rateLimitKey: () => 'custom'
+          key: () => 'custom'
         }
       },
       handler: (request, reply) => {
@@ -106,7 +115,7 @@ describe('plugin', () => {
       plugins: {
         rateLimit: {
           enabled: true,
-          rateLimitKeyPrefix: () => 'custom-prefix'
+          keyPrefix: () => 'custom-prefix'
         }
       },
       handler: (request, reply) => {
@@ -153,6 +162,12 @@ describe('plugin', () => {
 
   beforeEach(() => {
     return redisClient.flushdb();
+  });
+
+  afterEach(() => {
+    returnedRedisError = undefined;
+    time = undefined;
+    Sinon.restore();
   });
 
   it('counts number of requests made', () => {
@@ -212,7 +227,7 @@ describe('plugin', () => {
     });
   });
 
-  it('uses custom rateLimitKey function if provided', () => {
+  it('uses custom key function if provided', () => {
     return server.injectThen({
       method: 'POST',
       url: '/custom_rate_limit_key_test',
@@ -228,7 +243,7 @@ describe('plugin', () => {
     });
   });
 
-  it('uses default rateLimitKey if none provided', () => {
+  it('uses default key if none provided', () => {
     return server.injectThen({
       method: 'POST',
       url: '/default_test',
@@ -244,7 +259,7 @@ describe('plugin', () => {
     });
   });
 
-  it('uses custom rateLimitKeyPrefix function if provided', () => {
+  it('uses custom keyPrefix function if provided', () => {
     return server.injectThen({
       method: 'POST',
       url: '/custom_rate_limit_key_prefix_test',
@@ -260,7 +275,7 @@ describe('plugin', () => {
     });
   });
 
-  it('uses default rateLimitKeyPrefix if no custom rateLimitKeyPrefix is registered for the route and no rateLimitKeyPrefix is set in the plugin options', () => {
+  it('uses default keyPrefix if no custom keyPrefix is registered for the route and no keyPrefix is set in the plugin options', () => {
     return server.injectThen({
       method: 'POST',
       url: '/default_test',
@@ -367,9 +382,81 @@ describe('plugin', () => {
     });
   });
 
+  it('calls onRedisError if the Redis client errors', () => {
+    const err = new Error('SomeError');
+    Sinon.stub(redisClient, 'evalshaAsync').rejects(new Error('SomeError')).usingPromise(Bluebird.Promise);
+
+    return server.injectThen({
+      method: 'POST',
+      url: '/default_test',
+      credentials: { api_key: '123' }
+    })
+    .then(() => {
+      expect(returnedRedisError).to.eql(err);
+    });
+  });
+
+  it('calls timer with the number of milliseconds the rate limit operation took', () => {
+    return server.injectThen({
+      method: 'POST',
+      url: '/default_test',
+      credentials: { api_key: '123' }
+    })
+    .then(() => {
+      expect(time).to.be.greaterThan(0);
+      expect(time).to.be.lessThan(20);
+    });
+  });
+
+  it('continues the request even if onRedisError is not set', () => {
+    const testServer = new Hapi.Server();
+
+    testServer.connection({ port: 80 });
+
+    testServer.register([
+      require('inject-then'),
+      require('./authentication'),
+      {
+        register: require('../lib'),
+        options: {
+          defaultRate: () => ({ limit: 1, window: 60 }),
+          redisClient,
+          key: (request) => request.auth.credentials.api_key,
+          overLimitError: (rate) => new RateLimitError(rate)
+        }
+      }
+    ], () => {});
+
+    testServer.route([{
+      method: 'GET',
+      path: '/test',
+      config: {
+        plugins: {
+          rateLimit: {
+            enabled: true
+          }
+        },
+        handler: (request, reply) => {
+          reply('hello world');
+        }
+      }
+    }]);
+
+    Sinon.stub(redisClient, 'evalshaAsync').returns(Bluebird.reject('SomeError'));
+
+    return testServer.injectThen({
+      method: 'GET',
+      url: '/test',
+      credentials: { api_key: '123' }
+    })
+    .then((response) => {
+      expect(response.result).to.eql('hello world');
+    });
+  });
+
 });
 
-describe('register plugin with rateLimitKeyPrefix option set so rate limit is common to all routes', () => {
+describe('register plugin with keyPrefix option set so rate limit is common to all routes', () => {
 
   const defaultRate = { limit: 10, window: 60 };
 
@@ -385,8 +472,8 @@ describe('register plugin with rateLimitKeyPrefix option set so rate limit is co
       options: {
         defaultRate: () => defaultRate,
         redisClient,
-        rateLimitKey: (request) => request.auth.credentials.api_key,
-        rateLimitKeyPrefix: () => 'options-prefix',
+        key: (request) => request.auth.credentials.api_key,
+        keyPrefix: () => 'options-prefix',
         overLimitError: (rate) => new RateLimitError(rate)
       }
     }
@@ -433,7 +520,7 @@ describe('register plugin with rateLimitKeyPrefix option set so rate limit is co
     return redisClient.flushdb();
   });
 
-  it('uses rateLimitKeyPrefix from options if no custom rateLimitKeyPrefix is registered for the route', () => {
+  it('uses keyPrefix from options if no custom keyPrefix is registered for the route', () => {
     return server.injectThen({
       method: 'POST',
       url: '/default_test',

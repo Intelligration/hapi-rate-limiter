@@ -1,3 +1,25 @@
+#### 3.0.1 (2019-07-15)
+
+##### Bug Fixes
+
+* **timer:**  measures time taken more accurately ([#33](https://github.com/lob/hapi-rate-limiter/pull/33)) ([0f6131bf](https://github.com/lob/hapi-rate-limiter/commit/0f6131bfac8ff3533bd96533ddb7bcdc76f2655d))
+
+## 3.0.0 (2019-06-17)
+
+##### New Features
+
+* **timer:**  adds timer option and simplifies key option names ([#32](https://github.com/lob/hapi-rate-limiter/pull/32)) ([275786a5](https://github.com/lob/hapi-rate-limiter/commit/275786a5cfb31863f3ddbb4c055f58fc46489b7f))
+  * `rateLimitKey` is now named `key`
+  * `rateLimitKeyPrefix` is now named `keyPrefix`
+  * `timer` is a callback that is called with the elapsed milliseconds of
+    the rate limit operation
+
+### 2.2.0 (2018-12-13)
+
+##### Bug Fixes
+
+* **redis:**  handle redis error and continue the request ([0b06f486](https://github.com/lob/hapi-rate-limiter/commit/0b06f486d717ab32d12b7bf61aa62d53352714e8))
+
 #### 2.1.1 (2018-07-12)
 
 ##### Bug Fixes

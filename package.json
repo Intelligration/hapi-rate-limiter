@@ -1,6 +1,6 @@
 {
   "name": "hapi-rate-limiter",
-  "version": "2.1.1",
+  "version": "3.0.1",
   "description": "Hapi-plugin to handle rate-limiting",
   "main": "lib/index.js",
   "scripts": {
@@ -37,7 +37,8 @@
     "inject-then": "^2.0.6",
     "istanbul": "^0.4.4",
     "mocha": "^2.5.3",
-    "redis": "^2.6.2"
+    "redis": "^2.6.2",
+    "sinon": "^7.2.0"
   },
   "peerDependencies": {
     "hapi": ">=11 <17",
