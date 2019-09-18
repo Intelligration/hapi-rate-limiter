@@ -42,6 +42,6 @@
   },
   "peerDependencies": {
     "hapi": ">=11 <17",
-    "ioredis": "^4.14.1",
+    "ioredis": "^4.14.1"
   }
 }
